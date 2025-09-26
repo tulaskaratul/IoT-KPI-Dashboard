@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Docker
+*.pid
+*.sock
+
+# Docker volumes (managed by docker-compose)
+postgres_data/
+grafana_data/
+redis_data/
+
+# Node
+node_modules/
+
+# Python tooling
+.mypy_cache/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/

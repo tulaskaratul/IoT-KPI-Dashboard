@@ -1,0 +1,112 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "IoT KPI Dashboard",
+    "tags": ["iot", "kpi", "monitoring"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Device Status Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "SELECT COUNT(*) as total FROM devices",
+            "refId": "A"
+          },
+          {
+            "expr": "SELECT COUNT(*) as active FROM devices WHERE status = 'active'",
+            "refId": "B"
+          },
+          {
+            "expr": "SELECT COUNT(*) as inactive FROM devices WHERE status = 'inactive'",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 0}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Device Uptime Trends",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "SELECT timestamp, AVG(value) as avg_uptime FROM device_metrics WHERE metric_type = 'uptime' GROUP BY timestamp ORDER BY timestamp",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Device Response Times",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "SELECT timestamp, AVG(value) as avg_response_time FROM device_metrics WHERE metric_type = 'response_time' GROUP BY timestamp ORDER BY timestamp",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Device Data Throughput",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "SELECT timestamp, SUM(value) as total_throughput FROM device_metrics WHERE metric_type = 'data_throughput' GROUP BY timestamp ORDER BY timestamp",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Error Rate by Device Type",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "SELECT d.device_type, AVG(m.value) as error_rate FROM devices d JOIN device_metrics m ON d.id = m.device_id WHERE m.metric_type = 'error_count' GROUP BY d.device_type",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "title": "IoT Uptime (from Status History)",
+  "timezone": "browser",
+  "tags": ["iot", "uptime", "status"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "device_id",
+        "type": "query",
+        "datasource": "PostgreSQL",
+        "hide": 0,
+        "refresh": 2,
+        "query": "SELECT device_id AS __text, id AS __value FROM devices ORDER BY device_id;",
+        "includeAll": false,
+        "multi": false,
+        "current": { "selected": false },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Uptime % (computed)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": "PostgreSQL",
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts,\n         make_interval(secs => $__interval_ms/1000.0) AS step\n),\nslots AS (\n  SELECT generate_series(b.from_ts, b.to_ts, b.step) AS ts FROM bounds b\n),\nactive AS (\n  SELECT started_at, COALESCE(ended_at, (SELECT to_ts FROM bounds)) AS ended_at\n  FROM device_status_history dsh\n  WHERE dsh.device_id = ${device_id:sqlstring}::uuid\n    AND dsh.started_at <= (SELECT to_ts FROM bounds)\n    AND COALESCE(dsh.ended_at, (SELECT to_ts FROM bounds)) >= (SELECT from_ts FROM bounds)\n    AND dsh.status = 'active'\n)\nSELECT\n  s.ts AS time,\n  CASE WHEN EXISTS (\n    SELECT 1 FROM active a\n    WHERE s.ts >= a.started_at AND s.ts < a.ended_at\n  ) THEN 100 ELSE 0 END AS uptime_pct\nFROM slots s\nORDER BY 1;",
+          "interval": ""
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Avg Uptime % (window)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 10 },
+      "datasource": "PostgreSQL",
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts,\n         make_interval(secs => $__interval_ms/1000.0) AS step\n),\nslots AS (\n  SELECT generate_series(b.from_ts, b.to_ts, b.step) AS ts FROM bounds b\n),\nactive AS (\n  SELECT started_at, COALESCE(ended_at, (SELECT to_ts FROM bounds)) AS ended_at\n  FROM device_status_history dsh\n  WHERE dsh.device_id = ${device_id:sqlstring}::uuid\n    AND dsh.started_at <= (SELECT to_ts FROM bounds)\n    AND COALESCE(dsh.ended_at, (SELECT to_ts FROM bounds)) >= (SELECT from_ts FROM bounds)\n    AND dsh.status = 'active'\n),\nseries AS (\n  SELECT s.ts, CASE WHEN EXISTS (\n    SELECT 1 FROM active a\n    WHERE s.ts >= a.started_at AND s.ts < a.ended_at\n  ) THEN 100 ELSE 0 END AS uptime_pct\n  FROM slots s\n)\nSELECT AVG(uptime_pct) AS avg_uptime_pct FROM series;"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Minutes (window)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 10 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts\n)\nSELECT\n  SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, (SELECT to_ts FROM bounds)) - GREATEST(started_at, (SELECT from_ts FROM bounds))))) / 60.0 AS active_minutes\nFROM device_status_history dsh\nWHERE dsh.device_id = ${device_id:sqlstring}::uuid\n  AND dsh.status = 'active'\n  AND dsh.started_at <= (SELECT to_ts FROM bounds)\n  AND COALESCE(dsh.ended_at, (SELECT to_ts FROM bounds)) >= (SELECT from_ts FROM bounds);"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Inactive Minutes (window)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 10 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts\n), total AS (\n  SELECT EXTRACT(EPOCH FROM ((SELECT to_ts FROM bounds) - (SELECT from_ts FROM bounds))) AS secs\n), active AS (\n  SELECT SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, (SELECT to_ts FROM bounds)) - GREATEST(started_at, (SELECT from_ts FROM bounds))))) AS secs\n  FROM device_status_history dsh\n  WHERE dsh.device_id = ${device_id:sqlstring}::uuid\n    AND dsh.status = 'active'\n    AND dsh.started_at <= (SELECT to_ts FROM bounds)\n    AND COALESCE(dsh.ended_at, (SELECT to_ts FROM bounds)) >= (SELECT from_ts FROM bounds)\n)\nSELECT ((t.secs - COALESCE(a.secs,0)) / 60.0) AS inactive_minutes\nFROM total t LEFT JOIN active a ON 1=1;"
+        }
+      ]
+    }
+  ]
+}
+
+
