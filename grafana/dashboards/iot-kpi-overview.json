@@ -1,0 +1,163 @@
+{
+  "title": "IoT KPI Overview",
+  "timezone": "browser",
+  "tags": ["iot", "kpi", "overview"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "device_id",
+        "type": "query",
+        "datasource": "PostgreSQL",
+        "hide": 0,
+        "refresh": 2,
+        "query": "SELECT device_id AS __text, device_id AS __value FROM devices ORDER BY device_id;",
+        "includeAll": false,
+        "multi": false,
+        "current": { "selected": false },
+        "sort": 1
+      },
+      {
+        "name": "device_type",
+        "type": "query",
+        "datasource": "PostgreSQL",
+        "hide": 0,
+        "refresh": 2,
+        "query": "SELECT DISTINCT device_type FROM devices WHERE device_type IS NOT NULL ORDER BY 1;",
+        "includeAll": true,
+        "multi": false,
+        "current": { "selected": true },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Devices",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS total FROM devices;"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Devices",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS active FROM devices WHERE status = 'active';"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Inactive Devices",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS inactive FROM devices WHERE status = 'inactive';"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Uptime % (computed) — ${device_id}",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "datasource": "PostgreSQL",
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts,\n         make_interval(secs => $__interval_ms/1000.0) AS step\n),\nslots AS (\n  SELECT generate_series(b.from_ts, b.to_ts, b.step) AS ts FROM bounds b\n),\nactive AS (\n  SELECT started_at, COALESCE(ended_at, (SELECT to_ts FROM bounds)) AS ended_at\n  FROM device_status_history dsh\n  WHERE dsh.device_id = ${device_id:sqlstring}::uuid\n    AND dsh.started_at <= (SELECT to_ts FROM bounds)\n    AND COALESCE(dsh.ended_at, (SELECT to_ts FROM bounds)) >= (SELECT from_ts FROM bounds)\n    AND dsh.status = 'active'\n)\nSELECT\n  s.ts AS time,\n  CASE WHEN EXISTS (SELECT 1 FROM active a WHERE s.ts >= a.started_at AND s.ts < a.ended_at) THEN 100 ELSE 0 END AS uptime_pct\nFROM slots s\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Avg Response Time (ms)",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 14 },
+      "datasource": "PostgreSQL",
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts,\n         make_interval(secs => $__interval_ms/1000.0) AS step\n),\nslots AS (\n  SELECT generate_series(b.from_ts, b.to_ts, b.step) AS ts, (SELECT step FROM bounds) AS step FROM bounds b\n),\nagg AS (\n  SELECT s.ts, AVG(m.value::numeric) AS avg_ms\n  FROM slots s\n  JOIN device_metrics m ON m.metric_type = 'response_time'\n   AND m.timestamp >= s.ts AND m.timestamp < s.ts + s.step\n  GROUP BY s.ts\n)\nSELECT ts AS time, avg_ms FROM agg ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate %",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "datasource": "PostgreSQL",
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts,\n         make_interval(secs => $__interval_ms/1000.0) AS step\n),\nslots AS (\n  SELECT generate_series(b.from_ts, b.to_ts, b.step) AS ts, (SELECT step FROM bounds) AS step FROM bounds b\n),\nreq AS (\n  SELECT s.ts, SUM(CASE WHEN m.metric_type = 'request_count' THEN m.value::numeric ELSE 0 END) AS reqs,\n         SUM(CASE WHEN m.metric_type = 'error_count' THEN m.value::numeric ELSE 0 END) AS errs\n  FROM slots s\n  LEFT JOIN device_metrics m ON m.timestamp >= s.ts AND m.timestamp < s.ts + s.step\n  GROUP BY s.ts\n)\nSELECT ts AS time, CASE WHEN reqs > 0 THEN (errs/reqs*100.0) ELSE 0 END AS error_pct FROM req ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top Devices by Error Rate (window)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH bounds AS (\n  SELECT to_timestamp($__unixEpochFrom()) AS from_ts, to_timestamp($__unixEpochTo()) AS to_ts\n), base AS (\n  SELECT d.device_id, d.name,\n         SUM(CASE WHEN m.metric_type='request_count' THEN m.value::numeric ELSE 0 END) AS reqs,\n         SUM(CASE WHEN m.metric_type='error_count' THEN m.value::numeric ELSE 0 END) AS errs\n  FROM devices d\n  LEFT JOIN device_metrics m ON m.device_id = d.device_id\n   AND m.timestamp >= (SELECT from_ts FROM bounds) AND m.timestamp <= (SELECT to_ts FROM bounds)\n  GROUP BY d.device_id, d.name\n)\nSELECT device_id, name, reqs, errs, CASE WHEN reqs>0 THEN (errs/reqs*100.0) ELSE 0 END AS error_pct\nFROM base\nORDER BY error_pct DESC NULLS LAST\nLIMIT 10;"
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Devices by Type",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT device_type, COUNT(*) AS count FROM devices GROUP BY device_type ORDER BY count DESC;"
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Devices by Status",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT status, COUNT(*) AS count FROM devices GROUP BY status ORDER BY count DESC;"
+        }
+      ]
+    }
+  ]
+}
+
+
+
+

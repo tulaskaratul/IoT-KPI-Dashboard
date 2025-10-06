@@ -1,0 +1,299 @@
+import requests
+import psycopg2
+from psycopg2.extras def extract_devices(batch_size: int = 1000, since: Optional[str] = None) -> Dict:
+    """
+    Extract device information from the API with pagination support.
+
+    Args:
+        batch_size: Number of devices to fetch per page
+        since: ISO format datetime string to filter devices created after this time
+
+    Returns:
+        Dict containing device data, total count, and pages processed
+
+    Raises:
+        requests.RequestException: If the API request fails
+        ValueError: If the since parameter is not a valid ISO datetime string
+    """
+    url = "https://samasth.io/api/deviceInfos/all"
+    token = os.environ.get("SAMASTH_API_KEY") or "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhdHVsLnR1bGFza2FyQHViaXFlZGdlLmNvbSIsInVzZXJJZCI6IjJlMzg4OGQwLTYxNmEtMTFmMC1hMGZhLTFmMmU0YjRmMTE0OCIsInNjb3BlcyI6WyJURU5BTlRfQURNSU4iXSwic2Vzc2lvbklkIjoiOWZiYmMyOGItZWY0Yy00OTM3LThjYjItN2QxOTIyZDQ2MTFmIiwiZXhwIjoxNzU5NTUyNjcyLCJpc3MiOiJzYW1hc3RoLmlvIiwiZW5hYmxlZCI6dHJ1ZSwiaXNQdWJsaWMiOmZhbHNlLCJ0ZW5hbnRJZCI6IjExMmY0NmYwLTJiZWMtMTFlYy1iNTRhLTUxNzBhYmVhOTQyZCIsImN1c3RvbWVySWQiOiIxMzgxNDAwMC0xZGQyLTExYjItODA4MC04MDgwODA4MDgwODAifQ.vECfr37F9T4g_Bl6TjlRLu6HbsWhZQGJngYroi6vzFHmTZb2r8EKAqtPUDS6ygtzX47J2Awtz6uvoEEWgUbzUQ"
+    
+    if not token:
+        logger.error("SAMASTH_API_KEY environment variable not set")
+        return {"data": [], "totalElements": 0, "pagesProcessed": 0} execute_values
+import os
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+from psycopg2.extensions import connection as PgConnection
+from time import sleep
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03dZ [%(levelname)-8s] %(message)s [%(name)s] loc=%(filename)s:%(lineno)d',
+    datefmt='%Y-%m-%dT%H:%M:%S'
+)
+
+def get_db_connection(max_retries: int = 3, retry_delay: int = 5) -> PgConnection:
+    """
+    Create a database connection with retry logic.
+
+    Args:
+        max_retries: Maximum number of connection attempts
+        retry_delay: Delay in seconds between retries
+
+    Returns:
+        A PostgreSQL database connection
+
+    Raises:
+        psycopg2.Error: If connection fails after all retries
+    """
+    db_host = os.getenv("DB_HOST", "postgres")
+    db_port = os.getenv("DB_PORT", "5432")
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg2.connect(
+                host=db_host,
+                port=db_port,
+                database="iot_kpi_db",
+                user="iot_user",
+                password="iot_password",
+                connect_timeout=10  # Add connection timeout
+            )
+            logger.info(f"Successfully connected to database at {db_host}:{db_port}")
+            return conn
+        except psycopg2.Error as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed to connect to database after {max_retries} attempts: {e}")
+                raise
+            logger.warning(f"Database connection attempt {attempt + 1} failed: {e}, retrying in {retry_delay}s")
+            sleep(retry_delay)
+
+
+def extract_devices(batch_size: int = 1000, since: Optional[str] = None) -> Dict:
+    """
+    Extract device information from the API with pagination support.
+
+    Args:
+        batch_size: Number of devices to fetch per page
+        since: ISO format datetime string to filter devices created after this time
+
+    Returns:
+        Dict containing device data, total count, and pages processed
+
+    Raises:
+        requests.RequestException: If the API request fails
+        ValueError: If the since parameter is not a valid ISO datetime string
+    """
+    url = "https://samasth.io/api/deviceInfos/all"
+    token = os.environ.get("SAMASTH_API_KEY") or "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhdHVsLnR1bGFza2FyQHViaXFlZGdlLmNvbSIsInVzZXJJZCI6IjJlMzg4OGQwLTYxNmEtMTFmMC1hMGZhLTFmMmU0YjRmMTE0OCIsInNjb3BlcyI6WyJURU5BTlRfQURNSU4iXSwic2Vzc2lvbklkIjoiOWZiYmMyOGItZWY0Yy00OTM3LThjYjItN2QxOTIyZDQ2MTFmIiwiZXhwIjoxNzU5NTUyNjcyLCJpc3MiOiJzYW1hc3RoLmlvIiwiaWF0IjoxNzU5NDY2MjcyLCJlbmFibGVkIjp0cnVlLCJpc1B1YmxpYyI6ZmFsc2UsInRlbmFudElkIjoiMTEyZjQ2ZjAtMmJlYy0xMWVjLWI1NGEtNTE3MGFiZWE5NDJkIiwiY3VzdG9tZXJJZCI6IjEzODE0MDAwLTFkZDItMTFiMi04MDgwLTgwODA4MDgwODA4MCJ9.vECfr37F9T4g_Bl6TjlRLu6HbsWhZQGJngYroi6vzFHmTZb2r8EKAqtPUDS6ygtzX47J2Awtz6uvoEEWgUbzUQ"
+    if not token:
+        print("Error: SAMASTH_API_KEY environment variable not set. Please set SAMASTH_API_KEY environment variable.")
+        return {"data": []}
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    all_devices = []
+    page = 0
+    print(f"Starting device extraction with batch size {batch_size}, since {since}")
+    while True:
+        params = {
+            "pageSize": str(batch_size),
+            "page": str(page),
+            "sortProperty": "createdTime",
+            "sortOrder": "DESC",
+            "includeCustomers": "true"
+        }
+
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            print(f"Page {page}: HTTP {response.status_code}")
+
+            if response.status_code != 200:
+                print(f"API Error: {response.status_code} - {response.text[:200]}")
+                break
+
+            data = response.json()
+            devices = data.get('data', [])
+            total_elements = data.get('totalElements', 0)
+            total_pages = data.get('totalPages', 0)
+            has_next = data.get('hasNext', False)
+
+            print(f"Page {page}: {len(devices)} devices retrieved")
+            print(f"Total pages: {total_pages}, Has next: {has_next}, Total devices: {total_elements}")
+
+            if not devices:
+                print(f"No more devices found on page {page}")
+                break
+
+            # Process devices in order until finding an old one
+            if since:
+                from datetime import datetime, timezone
+                
+                # Convert since to UTC datetime for comparison
+                since_dt = datetime.fromisoformat(since.replace('Z', '+00:00')).astimezone(timezone.utc)
+                stop = False
+                
+                # Filter devices newer than since_time
+                for device in devices:
+                    device_time = device.get('createdTime', '')
+                    if not device_time:
+                        continue
+                    
+                    # Parse device time, ensuring UTC for comparison
+                    device_dt = datetime.fromisoformat(device_time.replace('Z', '+00:00')).astimezone(timezone.utc)
+                    
+                    # Only add newer devices
+                    if device_dt > since_dt:
+                        all_devices.append(device)
+                    else:
+                        print(f"Stopping early: found device from {device_dt} <= {since_dt}")
+                        stop = True
+                        break
+                
+                # Stop pagination if we found an old device
+                if stop:
+                    break
+            else:
+                all_devices.extend(devices)
+
+            if not has_next or page >= total_pages - 1:
+                print(f"Reached end of pagination (page {page}/{total_pages})")
+                break
+
+            page += 1
+
+        except requests.RequestException as e:
+            print(f"Request failed on page {page}: {e}")
+            break
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error on page {page}: {e}")
+            print(f"Response content: {response.text[:500]}")
+            break
+
+    print(f"Extraction complete: {len(all_devices)} devices from {page + 1} pages")
+    return {"data": all_devices, "totalElements": len(all_devices), "pagesProcessed": page + 1}
+
+def save_devices_to_file(devices: Dict, filename: str = "devices.json") -> None:
+    """
+    Save device data to a JSON file.
+
+    Args:
+        devices: Dictionary containing device data
+        filename: Name of the file to save the data to
+
+    Raises:
+        OSError: If file cannot be written
+        TypeError: If devices cannot be serialized to JSON
+    """
+    try:
+        logger.info(f"Saving {len(devices.get('data', []))} devices to {filename}")
+        with open(filename, "w") as file:
+            json.dump(devices, file, indent=4)
+        logger.info(f"Successfully saved devices data to {filename}")
+    except TypeError as e:
+        logger.error(f"Failed to serialize devices data to JSON: {e}")
+        raise
+    except OSError as e:
+        logger.error(f"Failed to write to file {filename}: {e}")
+        raise
+
+def save_devices_to_database(devices_data: Dict) -> int:
+    """
+    Save device data to the database, updating existing entries and inserting new ones.
+
+    Args:
+        devices_data: Dictionary containing device data with a 'data' key containing list of devices
+
+    Returns:
+        int: Number of new devices inserted
+
+    Raises:
+        psycopg2.Error: If there's a database error
+        KeyError: If required device data fields are missing
+    """
+    conn = None
+    cursor = None
+    inserted_count = 0
+    devices = devices_data.get('data', [])
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        logger.info(f"Processing {len(devices)} devices for database update")
+        updated_count = 0
+
+        for device in devices:
+            try:
+                device_id = device['id']['id']
+                name = device['name']
+                device_type = device.get('type', '')
+                status = 'active' if device.get('active', False) else 'inactive'
+                install_date = device.get('createdTime')
+
+                cursor.execute("SELECT device_id FROM devices WHERE device_id = %s", (device_id,))
+                existing = cursor.fetchone()
+
+                if existing:
+                    cursor.execute("""
+                        UPDATE devices
+                        SET name = %s, device_type = %s, status = %s, install_date = %s
+                        WHERE device_id = %s
+                    """, (name, device_type, status, install_date, device_id))
+                    updated_count += 1
+                else:
+                    cursor.execute("""
+                        INSERT INTO devices (device_id, name, device_type, status, install_date)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (device_id, name, device_type, status, install_date))
+                    inserted_count += 1
+
+            except KeyError as e:
+                logger.error(f"Missing required field in device data: {e}")
+                continue
+            except psycopg2.Error as e:
+                logger.error(f"Database error processing device {device.get('id', {}).get('id', 'unknown')}: {e}")
+                continue
+
+        conn.commit()
+        logger.info(f"Database update complete: {inserted_count} new devices, {updated_count} updated")
+        return inserted_count
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error during device save operation: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+if __name__ == "__main__":
+    try:
+        logger.info("Starting device extraction process")
+        devices_data = extract_devices()
+        
+        if not devices_data.get('data'):
+            logger.warning("No devices found to process")
+            exit(1)
+            
+        logger.info(f"Processing {len(devices_data.get('data', []))} devices")
+        save_devices_to_file(devices_data)
+        logger.info("Saved devices data to file")
+        
+        new_devices_count = save_devices_to_database(devices_data)
+        logger.info(f"Database operation complete - {new_devices_count} new devices added")
+        
+    except Exception as e:
+        logger.error(f"Process failed with error: {e}")
+        exit(1)
+    else:
+        logger.info("Device extraction process completed successfully")
+        exit(0)

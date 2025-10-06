@@ -1,0 +1,19 @@
+# Auto normalize text files to LF
+* text=auto eol=lf
+
+# Specific overrides (if needed)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sql text eol=lf
+*.sh text eol=lf
+
+# Binary files — don’t mess with line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
