@@ -14,9 +14,9 @@ class Device(Base):
     
     __tablename__ = "devices"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    device_id = Column(String(255), unique=True, nullable=False, index=True)
+    device_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
+    install_date = Column(DateTime(timezone=True), server_default=func.now())
     device_type = Column(String(100))
     location = Column(String(255))
     status = Column(String(50), default="unknown")  # active, inactive, maintenance
@@ -32,4 +32,4 @@ class Device(Base):
     kpi_calculations = relationship("KPICalculation", back_populates="device", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<Device(id={self.device_id}, name={self.name}, status={self.status})>"
+        return f"<Device(device_id={self.device_id}, name={self.name}, status={self.status})>"

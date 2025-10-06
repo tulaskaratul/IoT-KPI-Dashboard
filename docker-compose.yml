@@ -28,7 +28,6 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -69,6 +68,8 @@ services:
       - DATABASE_URL=postgresql://iot_user:iot_password@postgres:5432/iot_kpi_db
       - REDIS_URL=redis://redis:6379
       - SAMASTH_API_URL=https://samasth.io/api
+      - SAMASTH_TOKEN=${SAMASTH_TOKEN}
+      - PYTHONPATH=/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +78,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./logs:/app/logs
+      - ./python_loader:/app/python_loader
+      - ./prod_batch_uptime_results.csv:/app/prod_batch_uptime_results.csv
     networks:
       - iot_network
 
@@ -95,6 +98,91 @@ services:
       timeout: 5s
       retries: 5
 
+  airflow-init:
+    image: apache/airflow:2.8.0
+    container_name: iot_kpi_airflow_init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://iot_user:iot_password@postgres:5432/iot_kpi_db
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key
+      - AIRFLOW__WEBSERVER__AUTHENTICATE=true
+      - AIRFLOW__WEBSERVER__AUTH_BACKEND=airflow.www.auth
+      - AIRFLOW__CORE__AUTHENTICATE=true
+      - SAMASTH_TOKEN=${SAMASTH_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/opt/airflow/project
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow db migrate
+    networks:
+      - iot_network
+
+  airflow-webserver:
+    image: apache/airflow:2.8.0
+    container_name: iot_kpi_airflow_webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://iot_user:iot_password@postgres:5432/iot_kpi_db
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key
+      - AIRFLOW__WEBSERVER__AUTHENTICATE=true
+      - AIRFLOW__WEBSERVER__AUTH_BACKEND=airflow.www.auth
+      - AIRFLOW__CORE__AUTHENTICATE=true
+      - SAMASTH_TOKEN=${SAMASTH_TOKEN}
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    volumes:
+      - .:/opt/airflow/project
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow webserver
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - iot_network
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.0
+    container_name: iot_kpi_airflow_scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql://iot_user:iot_password@postgres:5432/iot_kpi_db
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key
+      - SAMASTH_TOKEN=${SAMASTH_TOKEN}
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    volumes:
+      - .:/opt/airflow/project
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: airflow scheduler
+    networks:
+      - iot_network
+
   nginx:
     image: nginx:alpine
     container_name: iot_kpi_nginx
@@ -105,6 +193,7 @@ services:
     depends_on:
       - api
       - grafana
+      - airflow-webserver
     networks:
       - iot_network
 

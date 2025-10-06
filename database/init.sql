@@ -6,9 +6,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create devices table
 CREATE TABLE IF NOT EXISTS devices (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    device_id VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    device_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    install_date TIMESTAMP DEFAULT NOW(),
     device_type VARCHAR(100),
     location VARCHAR(255),
     status VARCHAR(50) DEFAULT 'unknown', -- active, inactive, maintenance
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS devices (
 -- Create device_metrics table for storing time-series data
 CREATE TABLE IF NOT EXISTS device_metrics (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    device_id UUID NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     metric_type VARCHAR(100) NOT NULL, -- uptime, response_time, data_throughput, error_count
     value DECIMAL(15,6),
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS device_metrics (
 -- Create device_status_history table for tracking status changes
 CREATE TABLE IF NOT EXISTS device_status_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    device_id UUID NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,
     started_at TIMESTAMP WITH TIME ZONE NOT NULL,
     ended_at TIMESTAMP WITH TIME ZONE,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS device_status_history (
 -- Create kpi_calculations table for storing calculated KPIs
 CREATE TABLE IF NOT EXISTS kpi_calculations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    device_id UUID REFERENCES devices(id) ON DELETE CASCADE,
+    device_id UUID REFERENCES devices(device_id) ON DELETE CASCADE,
     calculation_type VARCHAR(100) NOT NULL, -- uptime_percentage, availability, response_time_avg
     time_period VARCHAR(50) NOT NULL, -- hourly, daily, weekly, monthly
     period_start TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -87,11 +87,32 @@ CREATE TRIGGER update_devices_updated_at
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
--- Insert some test devices
-INSERT INTO devices (device_id, name, device_type, location, status, is_test_device, device_metadata) VALUES
-('TEST_DEVICE_001', 'Temperature Sensor 1', 'sensor', 'Building A - Floor 1', 'active', true, '{"model": "TempSense Pro", "firmware": "1.2.3"}'),
-('TEST_DEVICE_002', 'Humidity Monitor 1', 'sensor', 'Building A - Floor 2', 'active', true, '{"model": "HumidityMax", "firmware": "2.1.0"}'),
-('TEST_DEVICE_003', 'Motion Detector 1', 'sensor', 'Building B - Entrance', 'inactive', true, '{"model": "MotionPro", "firmware": "1.5.2"}'),
-('TEST_DEVICE_004', 'Air Quality Monitor', 'sensor', 'Building A - Lobby', 'active', true, '{"model": "AirQuality Pro", "firmware": "3.0.1"}'),
-('TEST_DEVICE_005', 'Smart Camera 1', 'camera', 'Building B - Parking', 'maintenance', true, '{"model": "SmartCam 4K", "firmware": "4.2.1"}')
-ON CONFLICT (device_id) DO NOTHING;
+-- telemetry log table (raw)
+CREATE TABLE IF NOT EXISTS telemetry_logs (
+    id BIGSERIAL PRIMARY KEY,
+    device_id UUID REFERENCES devices(device_id),
+    timestamp TIMESTAMP NOT NULL,
+    rss_value FLOAT,
+    raw_payload JSONB
+);
+
+-- derived status table (aggregates)
+CREATE TABLE IF NOT EXISTS device_status (
+    device_id UUID,
+    window_start TIMESTAMP,
+    window_end TIMESTAMP,
+    uptime_percentage FLOAT,
+    avg_rss FLOAT,
+    active_minutes INT,
+    inactive_minutes INT,
+    PRIMARY KEY (device_id, window_start, window_end)
+);
+
+-- Create indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_telemetry_logs_device_timestamp ON telemetry_logs(device_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs(timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_device_status_device_window ON device_status(device_id, window_start, window_end);
+CREATE INDEX IF NOT EXISTS idx_device_status_window ON device_status(window_start, window_end);
+
+

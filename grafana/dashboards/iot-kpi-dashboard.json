@@ -1,112 +1,522 @@
 {
-  "dashboard": {
-    "id": null,
-    "title": "IoT KPI Dashboard",
-    "tags": ["iot", "kpi", "monitoring"],
-    "style": "dark",
-    "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "Device Status Overview",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "SELECT COUNT(*) as total FROM devices",
-            "refId": "A"
-          },
-          {
-            "expr": "SELECT COUNT(*) as active FROM devices WHERE status = 'active'",
-            "refId": "B"
-          },
-          {
-            "expr": "SELECT COUNT(*) as inactive FROM devices WHERE status = 'inactive'",
-            "refId": "C"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "fieldConfig": {
-          "defaults": {
-            "color": {"mode": "thresholds"},
-            "thresholds": {
-              "steps": [
-                {"color": "green", "value": null},
-                {"color": "red", "value": 0}
-              ]
-            }
-          }
-        }
-      },
-      {
-        "id": 2,
-        "title": "Device Uptime Trends",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "SELECT timestamp, AVG(value) as avg_uptime FROM device_metrics WHERE metric_type = 'uptime' GROUP BY timestamp ORDER BY timestamp",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percent",
-            "min": 0,
-            "max": 100
-          }
-        }
-      },
-      {
-        "id": 3,
-        "title": "Device Response Times",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "SELECT timestamp, AVG(value) as avg_response_time FROM device_metrics WHERE metric_type = 'response_time' GROUP BY timestamp ORDER BY timestamp",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ms"
-          }
-        }
-      },
-      {
-        "id": 4,
-        "title": "Device Data Throughput",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "SELECT timestamp, SUM(value) as total_throughput FROM device_metrics WHERE metric_type = 'data_throughput' GROUP BY timestamp ORDER BY timestamp",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
-        "fieldConfig": {
-          "defaults": {
-            "unit": "bytes"
-          }
-        }
-      },
-      {
-        "id": 5,
-        "title": "Error Rate by Device Type",
-        "type": "piechart",
-        "targets": [
-          {
-            "expr": "SELECT d.device_type, AVG(m.value) as error_rate FROM devices d JOIN device_metrics m ON d.id = m.device_id WHERE m.metric_type = 'error_count' GROUP BY d.device_type",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
-      }
-    ],
-    "time": {
-      "from": "now-1h",
-      "to": "now"
-    },
-    "refresh": "30s"
-  }
+    "id":  null,
+    "title":  "IoT KPI Dashboard - Comprehensive",
+    "tags":  [
+                 "iot",
+                 "kpi",
+                 "monitoring"
+             ],
+    "style":  "dark",
+    "timezone":  "browser",
+    "panels":  [
+                   {
+                       "id":  1,
+                       "title":  "Total Devices",
+                       "type":  "stat",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT COUNT(*) as total FROM devices WHERE is_test_device = false",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  0,
+                                       "y":  0
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "blue",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  2,
+                       "title":  "Active Devices",
+                       "type":  "stat",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT COUNT(DISTINCT tl.device_id) as active FROM telemetry_logs tl WHERE tl.timestamp >= NOW() - INTERVAL '10 minutes' AND tl.device_id IN (SELECT device_id FROM devices WHERE is_test_device = false)",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  4,
+                                       "y":  0
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  3,
+                       "title":  "Inactive Devices",
+                       "type":  "stat",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT COUNT(*) as inactive FROM devices WHERE device_id NOT IN (SELECT DISTINCT tl.device_id FROM telemetry_logs tl WHERE tl.timestamp >= NOW() - INTERVAL '10 minutes') AND is_test_device = false",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  8,
+                                       "y":  0
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  4,
+                       "title":  "Average Uptime %",
+                       "type":  "gauge",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT AVG(uptime_percentage) as avg_uptime FROM (SELECT DISTINCT ON (device_id) device_id, uptime_percentage FROM device_status WHERE window_end >= NOW() - INTERVAL '1 hour' ORDER BY device_id, window_end DESC) as latest",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  12,
+                                       "y":  0
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "percent",
+                                                            "min":  0,
+                                                            "max":  100,
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "yellow",
+                                                                                                 "value":  50
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  5,
+                       "title":  "Top Devices by Uptime",
+                       "type":  "table",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT d.device_id, d.device_type, d.location, ds.uptime_percentage as avg_uptime FROM devices d JOIN (SELECT DISTINCT ON (device_id) device_id, uptime_percentage FROM device_status WHERE window_end >= NOW() - INTERVAL '1 hour' ORDER BY device_id, window_end DESC) ds ON d.device_id = ds.device_id ORDER BY ds.uptime_percentage DESC LIMIT 10",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  4
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "transformations":  [
+                                               {
+                                                   "id":  "organize",
+                                                   "options":  {
+                                                                   "excludeByName":  {
+                                                                                         "id":  false
+                                                                                     },
+                                                                   "indexByName":  {
+
+                                                                                   },
+                                                                   "renameByName":  {
+                                                                                        "device_id":  "Device ID",
+                                                                                        "device_type":  "Type",
+                                                                                        "location":  "Location",
+                                                                                        "avg_uptime":  "Avg Uptime %"
+                                                                                    }
+                                                               }
+                                               }
+                                           ]
+                   },
+                   {
+                       "id":  6,
+                       "title":  "Devices by Status",
+                       "type":  "piechart",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT status, COUNT(*) as count FROM devices WHERE is_test_device = false GROUP BY status",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  6,
+                                       "x":  12,
+                                       "y":  4
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  7,
+                       "title":  "Devices by Type",
+                       "type":  "piechart",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT device_type, COUNT(*) as count FROM devices WHERE is_test_device = false GROUP BY device_type",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  6,
+                                       "x":  18,
+                                       "y":  4
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  8,
+                       "title":  "Average Response Time",
+                       "type":  "stat",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT AVG(value) as avg_response FROM device_metrics WHERE metric_type = 'response_time' AND timestamp >= NOW() - INTERVAL '1 hour'",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  0,
+                                       "y":  12
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "ms",
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "yellow",
+                                                                                                 "value":  200
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  500
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  9,
+                       "title":  "Total Throughput",
+                       "type":  "stat",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT SUM(value) as total_throughput FROM device_metrics WHERE metric_type = 'data_throughput' AND timestamp >= NOW() - INTERVAL '1 hour'",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  4,
+                                       "y":  12
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "bytes",
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "blue",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  10,
+                       "title":  "Error Rate Trend",
+                       "type":  "timeseries",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT timestamp, AVG(value) as error_rate FROM device_metrics WHERE metric_type = 'error_count' GROUP BY timestamp ORDER BY timestamp",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  8,
+                                       "y":  12
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "count",
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  11,
+                       "title":  "Uptime Trends by Device Type",
+                       "type":  "timeseries",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT ds.window_start as timestamp, d.device_type, AVG(ds.uptime_percentage) as avg_uptime FROM devices d JOIN device_status ds ON d.device_id = ds.device_id GROUP BY ds.window_start, d.device_type ORDER BY ds.window_start",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  20
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "unit":  "percent",
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      }
+                                                        }
+                                       }
+                   },
+                   {
+                       "id":  12,
+                       "title":  "Active Devices List",
+                       "type":  "table",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT d.device_id, d.device_type, d.location, MAX(tl.timestamp) as last_seen, 'active' as status FROM devices d JOIN telemetry_logs tl ON d.device_id = tl.device_id WHERE tl.timestamp >= NOW() - INTERVAL '10 minutes' AND d.is_test_device = false GROUP BY d.device_id, d.device_type, d.location ORDER BY last_seen DESC",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  28
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "transformations":  [
+                                               {
+                                                   "id":  "organize",
+                                                   "options":  {
+                                                                   "excludeByName":  {
+                                                                                         "id":  false
+                                                                                     },
+                                                                   "indexByName":  {
+
+                                                                                   },
+                                                                   "renameByName":  {
+                                                                                        "device_id":  "Device ID",
+                                                                                        "device_type":  "Type",
+                                                                                        "location":  "Location",
+                                                                                        "last_seen":  "Last Seen",
+                                                                                        "status":  "Status"
+                                                                                    }
+                                                               }
+                                               }
+                                           ]
+                   },
+                   {
+                       "id":  13,
+                       "title":  "Inactive Devices List",
+                       "type":  "table",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT d.device_id, d.device_type, d.location, d.last_seen, 'inactive' as status FROM devices d WHERE d.device_id NOT IN (SELECT DISTINCT tl.device_id FROM telemetry_logs tl WHERE tl.timestamp >= NOW() - INTERVAL '10 minutes') AND d.is_test_device = false ORDER BY d.last_seen ASC",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  8,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  28
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  null
+                                                                                             }
+                                                                                         ]
+                                                                           }
+                                                        }
+                                       },
+                       "transformations":  [
+                                               {
+                                                   "id":  "organize",
+                                                   "options":  {
+                                                                   "excludeByName":  {
+                                                                                         "id":  false
+                                                                                     },
+                                                                   "indexByName":  {
+
+                                                                                   },
+                                                                   "renameByName":  {
+                                                                                        "device_id":  "Device ID",
+                                                                                        "device_type":  "Type",
+                                                                                        "location":  "Location",
+                                                                                        "last_seen":  "Last Seen",
+                                                                                        "status":  "Status"
+                                                                                    }
+                                                               }
+                                               }
+                                           ]
+                   },
+                   {
+                       "id":  14,
+                       "title":  "Error Rate by Device Type",
+                       "type":  "piechart",
+                       "targets":  [
+                                       {
+                                           "rawSql":  "SELECT d.device_type, AVG(m.value) as error_rate FROM devices d JOIN device_metrics m ON d.device_id = m.device_id WHERE m.metric_type = 'error_count' AND m.timestamp >= NOW() - INTERVAL '1 hour' GROUP BY d.device_type",
+                                           "refId":  "A",
+                                           "datasource":  "postgres"
+                                       }
+                                   ],
+                       "gridPos":  {
+                                       "h":  4,
+                                       "w":  4,
+                                       "x":  20,
+                                       "y":  12
+                                   },
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "palette-classic"
+                                                                      }
+                                                        }
+                                       }
+                   }
+               ],
+    "time":  {
+                 "from":  "now-6h",
+                 "to":  "now"
+             },
+    "refresh":  "1m"
 }

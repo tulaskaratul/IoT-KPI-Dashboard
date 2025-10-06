@@ -16,6 +16,7 @@ from sqlalchemy import create_engine
 from src.database.connection import engine
 from src.models.device import Device
 from src.models.metrics import DeviceMetric, DeviceStatusHistory
+from src.models.telemetry_log import TelemetryLog
 from src.core.config import settings
 
 # Configure logging
@@ -71,128 +72,141 @@ class DeviceCollector:
     async def _collect_device_data(self):
         """Collect data for all devices"""
         try:
-            # Get all test devices
-            devices = self.db_session.query(Device).filter(Device.is_test_device == True).all()
-            
+            # Get all production devices (not test devices)
+            devices = self.db_session.query(Device).filter(Device.is_test_device == False).all()
+
             for device in devices:
                 await self._collect_device_metrics(device)
-                
+
         except Exception as e:
             logger.error("Error collecting device data", error=str(e))
     
     async def _collect_device_metrics(self, device: Device):
-        """Collect metrics for a specific device"""
+        """Collect metrics for a specific device and insert into telemetry_logs"""
         try:
             # Simulate device data collection
             # In a real implementation, this would call the actual device API
             device_data = await self._simulate_device_data(device)
-            
+
+            timestamp = datetime.utcnow()
+
+            # Get RSS from metadata
+            rss = device.device_metadata.get("rss_value", -70) if device.device_metadata else -70
+
+            # Insert raw telemetry log
+            telemetry_log = TelemetryLog(
+                device_id=device.id,
+                timestamp=timestamp,
+                rss_value=rss,
+                raw_payload=device_data if device_data else {"status": "no_response"}
+            )
+            self.db_session.add(telemetry_log)
+
             if device_data:
-                # Update device last_seen
-                device.last_seen = datetime.utcnow()
-                
-                # Create metrics
-                await self._create_device_metrics(device, device_data)
-                
-                # Update device status
-                await self._update_device_status(device, device_data)
-                
-                self.db_session.commit()
-                logger.info("Device metrics collected", device_id=device.device_id)
-                
+                # Update device last_seen only if responding
+                device.last_seen = timestamp
+
+                # Update device status to active
+                await self._update_device_status(device, True, timestamp)
+
+                logger.info("Device telemetry collected - responding", device_id=device.device_id)
+            else:
+                # No response, check if status should change to inactive
+                time_since_last_seen = (timestamp - device.last_seen).total_seconds() if device.last_seen else float('inf')
+                should_be_inactive = time_since_last_seen > 300  # 5 minutes threshold
+                if should_be_inactive:
+                    await self._update_device_status(device, False, timestamp)
+
+                logger.info("Device not responding", device_id=device.device_id, time_since_last_seen=time_since_last_seen)
+
+            self.db_session.commit()
+
         except Exception as e:
-            logger.error("Error collecting metrics for device", 
+            logger.error("Error collecting metrics for device",
                         device_id=device.device_id, error=str(e))
             self.db_session.rollback()
     
     async def _simulate_device_data(self, device: Device) -> Optional[Dict]:
-        """Simulate device data collection"""
+        """Simulate device data collection based on RSS and telemetry"""
         # This simulates calling an external API
         # In reality, you would call the actual Samasth API or device endpoints
         
         import random
         
-        # Simulate different device behaviors
+        # Get RSS from metadata
+        rss = device.device_metadata.get("rss_value", -70) if device.device_metadata else -70
+        
+        # Probability of responding based on RSS (better signal = higher chance)
+        respond_prob = 0.3 + (rss + 100) / 60  # -100 to 0 dBm -> 0.3 to 0.9 prob
+        respond_prob = min(0.95, max(0.1, respond_prob))
+        is_responding = random.random() < respond_prob
+        
+        if not is_responding:
+            return None  # No data if not responding
+        
+        # Simulate metrics
         if device.device_type == "sensor":
-            return {
-                "uptime": random.uniform(0.85, 1.0),
-                "response_time": random.uniform(50, 200),
-                "data_throughput": random.uniform(100, 1000),
-                "error_count": random.randint(0, 5),
-                "request_count": random.randint(10, 50),
-                "status": "active" if random.random() > 0.1 else "inactive"
-            }
+            response_time = random.uniform(50, 200)
+            data_throughput = random.uniform(100, 1000)
+            error_count = random.randint(0, 5)
+            request_count = random.randint(10, 50)
         elif device.device_type == "camera":
-            return {
-                "uptime": random.uniform(0.7, 0.95),
-                "response_time": random.uniform(100, 500),
-                "data_throughput": random.uniform(1000, 5000),
-                "error_count": random.randint(0, 10),
-                "request_count": random.randint(5, 25),
-                "status": "active" if random.random() > 0.15 else "inactive"
-            }
+            response_time = random.uniform(100, 500)
+            data_throughput = random.uniform(1000, 5000)
+            error_count = random.randint(0, 10)
+            request_count = random.randint(5, 25)
         else:
-            return {
-                "uptime": random.uniform(0.8, 1.0),
-                "response_time": random.uniform(75, 300),
-                "data_throughput": random.uniform(200, 2000),
-                "error_count": random.randint(0, 8),
-                "request_count": random.randint(8, 40),
-                "status": "active" if random.random() > 0.12 else "inactive"
-            }
-    
-    async def _create_device_metrics(self, device: Device, data: Dict):
-        """Create device metrics from collected data"""
-        timestamp = datetime.utcnow()
+            response_time = random.uniform(75, 300)
+            data_throughput = random.uniform(200, 2000)
+            error_count = random.randint(0, 8)
+            request_count = random.randint(8, 40)
         
-        # Create various metrics (uptime is computed from status history, so we do NOT insert it)
-        metrics_data = [
-            {"metric_type": "response_time", "value": data.get("response_time", 0), "unit": "ms"},
-            {"metric_type": "data_throughput", "value": data.get("data_throughput", 0), "unit": "bytes/s"},
-            {"metric_type": "error_count", "value": data.get("error_count", 0), "unit": "count"},
-            {"metric_type": "request_count", "value": data.get("request_count", 0), "unit": "count"},
-        ]
-        
-        for metric_data in metrics_data:
-            metric = DeviceMetric(
-                device_id=device.id,
-                timestamp=timestamp,
-                **metric_data
-            )
-            self.db_session.add(metric)
+        return {
+            "response_time": response_time,
+            "data_throughput": data_throughput,
+            "error_count": error_count,
+            "request_count": request_count,
+            "is_responding": True,
+            "rss_adjusted": rss > -70  # For logging
+        }
     
-    async def _update_device_status(self, device: Device, data: Dict):
+
+
+
+    
+    async def _update_device_status(self, device: Device, is_responding: bool, timestamp: datetime):
         """Update device status and track status changes"""
-        new_status = data.get("status", "unknown")
-        
+        new_status = "active" if is_responding else "inactive"
+
         if device.status != new_status:
             # End current status period
             current_status = self.db_session.query(DeviceStatusHistory).filter(
                 DeviceStatusHistory.device_id == device.id,
                 DeviceStatusHistory.ended_at.is_(None)
             ).first()
-            
+
             if current_status:
-                current_status.ended_at = datetime.utcnow()
+                current_status.ended_at = timestamp
                 current_status.duration_seconds = int(
                     (current_status.ended_at - current_status.started_at).total_seconds()
                 )
-            
+
             # Start new status period
             new_status_history = DeviceStatusHistory(
                 device_id=device.id,
                 status=new_status,
-                started_at=datetime.utcnow()
+                started_at=timestamp
             )
             self.db_session.add(new_status_history)
-            
+
             # Update device status
             device.status = new_status
-            
-            logger.info("Device status changed", 
-                        device_id=device.device_id, 
-                        old_status=device.status, 
-                        new_status=new_status)
+
+            logger.info("Device status changed",
+                        device_id=device.device_id,
+                        old_status=device.status,
+                        new_status=new_status,
+                        is_responding=is_responding)
 
 async def main():
     """Main entry point for the collector"""

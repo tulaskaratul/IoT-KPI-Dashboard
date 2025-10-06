@@ -14,7 +14,7 @@
         "datasource": "PostgreSQL",
         "hide": 0,
         "refresh": 2,
-        "query": "SELECT device_id AS __text, id AS __value FROM devices ORDER BY device_id;",
+        "query": "SELECT device_id AS __text, device_id AS __value FROM devices ORDER BY device_id;",
         "includeAll": false,
         "multi": false,
         "current": { "selected": false },

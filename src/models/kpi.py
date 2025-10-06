@@ -21,7 +21,7 @@ class KPICalculation(Base):
     period_start = Column(DateTime(timezone=True), nullable=False, index=True)
     period_end = Column(DateTime(timezone=True), nullable=False)
     value = Column(Numeric(15, 6), nullable=False)
-    kpi_metadata = Column(JSON)
+    device_metadata = Column(JSON)
     calculated_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationship
